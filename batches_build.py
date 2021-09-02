@@ -20,10 +20,10 @@ class Build(object):
     def __init__(self, market):
         self.ticker_price = self.instance.get_ticker_price(market)
 
-        # self.batches(market, "test", 0.02, 0.3, 20, 0.2, 0.03, 3233, False)
+        # self.batches(market, "test", 0.02, 0.3, 20, 0.2, 0.03, 3233, batches_cns=16, db=False)
         # exit()
 
-        self.build(market, 0.02, 0.3, 20, 0.2, 0.03, self.ticker_price)
+        self.build(market, 0.02, 0.3, 20, 0.2, 0.03, self.ticker_price, batches_cns=16)
         self.update_batches_trading()
         self.update_commission(market)
         sqlite_close(self.conn)
@@ -36,7 +36,7 @@ class Build(object):
             raise e
 
     def batches(self, market, period_id, spacing, spacing_increment, investment_first, investment_increment,
-                profit_rate, buy_price_first, db=True):
+                profit_rate, buy_price_first, batches_cns, db=True):
         print(
             f'{market}: {period_id}\n间距离 {spacing} 间距递增 {spacing_increment}\n首次买入单价 {buy_price_first} 首次投入 {investment_first}\n资金递增 {investment_increment} 利润比例 {profit_rate}')
 
@@ -62,7 +62,7 @@ class Build(object):
         next_buy_quantity = total_quantity
         next_sell_price = buy_price_first * (1 + profit_rate)
         print("序号", "买入单价", "买入数量", "买入总价", "卖出单价", "卖出数量", "卖出总价", "累计金额", "累计买入", "利润", "当前均价")
-        for i in range(1, 16):
+        for i in range(1, batches_cns):
             print(i, round(next_buy_price, 2), round(next_buy_quantity, 4), round(next_investment, 2),
                   round(next_sell_price, 2), round(total_quantity - 0.00005, 4), round(sell_amount, 2),
                   round(total_investment, 2), round(total_quantity - 0.00005, 4), round(profit, 2),
@@ -86,7 +86,7 @@ class Build(object):
             avg_price = total_investment / total_quantity
 
     def build(self, market, spacing, spacing_increment, investment_first, investment_increment,
-              profit_rate, buy_price_first):
+              profit_rate, buy_price_first, batches_cns):
         in_progress = self._execute("SELECT * FROM build WHERE is_finish=0;")
         if in_progress:
             period_id = in_progress[0][1]
@@ -158,7 +158,7 @@ class Build(object):
             insert = self._execute(f'SELECT * FROM build WHERE is_finish=0 AND period_id={period_id};')
             if insert:
                 self.batches(market, period_id, spacing, spacing_increment, investment_first, investment_increment,
-                             profit_rate, buy_price_first)
+                             profit_rate, buy_price_first, batches_cns)
             else:
                 dingding_warn(f'分批建仓:{market}\n查询分批建仓insert:{insert}')
 
