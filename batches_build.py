@@ -20,6 +20,7 @@ class Build(object):
     def __init__(self, market):
         self.ticker_price = self.instance.get_ticker_price(market)
 
+        # 调试批次
         # self.batches(market, "test", 0.02, 0.3, 20, 0.2, 0.03, 3233, batches_cns=16, db=False)
         # exit()
 
@@ -37,6 +38,20 @@ class Build(object):
 
     def batches(self, market, period_id, spacing, spacing_increment, investment_first, investment_increment,
                 profit_rate, buy_price_first, batches_cns, db=True):
+        """
+        可以先不关注这个函数
+        :param market: 币种
+        :param period_id: 期次
+        :param spacing: 间距离
+        :param spacing_increment: 间距递增
+        :param investment_first: 首次投入
+        :param investment_increment: 资金递增
+        :param profit_rate: 利润比例
+        :param buy_price_first: 首次买入单价
+        :param batches_cns: 批次数
+        :param db: 调试批次 db=False不存数据库
+        :return:
+        """
         print(
             f'{market}: {period_id}\n间距离 {spacing} 间距递增 {spacing_increment}\n首次买入单价 {buy_price_first} 首次投入 {investment_first}\n资金递增 {investment_increment} 利润比例 {profit_rate}')
 
@@ -88,6 +103,7 @@ class Build(object):
     def build(self, market, spacing, spacing_increment, investment_first, investment_increment,
               profit_rate, buy_price_first, batches_cns):
         in_progress = self._execute("SELECT * FROM build WHERE is_finish=0;")
+        # 判断是否有正在执行的期次
         if in_progress:
             period_id = in_progress[0][1]
             order_id = time.strftime("%Y%m%d%H%M%S", time.localtime())
@@ -99,8 +115,10 @@ class Build(object):
                 f'SELECT sum(price * orig_qty) / sum(orig_qty) FROM batches_trading WHERE period_id = {period_id} AND is_finish=1;')
             avg_price = round(avg_price[0][0], 2) if avg_price[0][0] else avg_price[0][0]
             if batches_sell and self.ticker_price > batches_sell[0][7]:
+                # 判断价格是否满足卖出
                 sell = self.instance.sell_market(market, batches_sell[0][8], order_id=sell_order_id)
                 if sell:
+                    # 卖出委托，本轮完成 依次插入卖出委托、更新数据
                     _order_id = sell.get("orderId")
                     self._execute(
                         f'INSERT INTO `batches_trading` (`period_id`,`market`,`order_id`,`orderId`,`side`,`orig_qty`,`status`,`commission`,`is_finish`) VALUES('
@@ -119,6 +137,7 @@ class Build(object):
                     f'SELECT * FROM batches WHERE is_finish=-1 AND period_id={period_id} ORDER BY serial LIMIT 1;')
                 if batches_db:
                     if self.ticker_price < batches_db[0][4]:
+                        # 当前价格小于补仓价，买入补仓
                         buy = self.instance.buy_market(market, batches_db[0][5], order_id=buy_order_id)
                         _order_id = buy.get("orderId")
                         self._execute(
@@ -153,6 +172,9 @@ class Build(object):
             # profit = self.get_profit()
             # dingding_warn(f"分批建仓:{market}\n上一轮利润:{profit}\n请手动开启下一轮")
             # exit()
+            """
+            新建期次，开启下一轮
+            """
             period_id = time.strftime("%Y%m%d%H%M", time.localtime())
             self._execute(f'INSERT INTO `build` (`period_id`,`market`) VALUES({period_id},"{market}");')
             insert = self._execute(f'SELECT * FROM build WHERE is_finish=0 AND period_id={period_id};')
@@ -163,6 +185,9 @@ class Build(object):
                 dingding_warn(f'分批建仓:{market}\n查询分批建仓insert:{insert}')
 
     def update_batches_trading(self):
+        """
+        更新交易委托状态
+        """
         orders = self._execute(
             "SELECT order_id,market,status,orderId,commission FROM batches_trading WHERE is_finish=0;")
         if orders:
@@ -177,6 +202,11 @@ class Build(object):
                     self._execute(f'UPDATE batches_trading SET is_finish=1 WHERE order_id="{_order[0]}";')
 
     def update_commission(self, market):
+        """
+        更新手续费，trade_id 实际成交均价
+        :param market:
+        :return:
+        """
         sum_commission = 0
         trades = self._execute(
             "SELECT trade_id,period_id FROM batches_trading WHERE is_finish=1 AND price=0 AND status='FILLED' ORDER BY trade_id LIMIT 1;")
@@ -195,6 +225,10 @@ class Build(object):
         return sum_commission
 
     def get_profit(self):
+        """
+        获取本轮利润，暂时没有什么用
+        :return:
+        """
         profit = 0
         trades = self._execute(
             f"SELECT * FROM batches_trading WHERE is_finish=1 AND side='SELL' ORDER BY period_id DESC LIMIT 1;")
@@ -211,5 +245,5 @@ if __name__ == "__main__":
     logger.info("-" * 60)
     now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     symbol = "ETHBUSD"
-
+    # 程序入口
     Build(symbol)
