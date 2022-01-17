@@ -131,7 +131,7 @@ dmypy.json
 # user
 info.log
 data.json
-authorization.py
+#authorization.py
 test.py
 .DS_Store
 /.idea/
