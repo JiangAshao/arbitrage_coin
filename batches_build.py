@@ -107,6 +107,16 @@ class Build(object):
               profit_rate, buy_price_first, batches_cns):
         in_progress = self._execute(
             f"SELECT * FROM `build` WHERE is_finish=0 AND `transaction`=0 AND market='{market}';")
+
+        def avg_price(_period_id):
+            _avg_price = self._execute(
+                f'SELECT sum(price * orig_qty) / sum(orig_qty) FROM `batches_trading` WHERE period_id = {_period_id} AND is_finish=1 AND status="FILLED";')
+            if _avg_price and _avg_price[0] and _avg_price[0][0]:
+                _avg_price = round(_avg_price[0][0], 2)
+            else:
+                _avg_price = 0
+            return _avg_price
+
         # 判断是否有正在执行的期次
         if in_progress:
             period_id = in_progress[0][1]
@@ -115,10 +125,7 @@ class Build(object):
             sell_order_id = "S" + order_id
             batches_sell = self._execute(
                 f'SELECT * FROM `batches` WHERE is_finish=0 AND period_id={period_id} ORDER BY serial DESC LIMIT 1;')
-            avg_price = self._execute(
-                f'SELECT sum(price * orig_qty) / sum(orig_qty) FROM `batches_trading` WHERE period_id = {period_id} AND is_finish=1 AND status="FILLED";')
-            avg_price = round(avg_price[0][0], 2) if avg_price[0][0] else avg_price[0][0]
-
+            avg_price = avg_price(period_id)
             buy_orders = self._execute(
                 f'SELECT order_id,orig_qty,serial FROM `batches_trading` WHERE is_finish=0 AND side="BUY" AND period_id={period_id};')
             sell_orders = self._execute(
@@ -223,9 +230,7 @@ class Build(object):
                             f'UPDATE `batches_trading` SET status="FILLED",is_finish=1 WHERE order_id="{buy_orders[0][0]}";')
                         self._execute(
                             f'UPDATE `batches` SET is_finish=0 WHERE period_id={period_id} AND serial={buy_orders[0][2]};')
-                        avg_price = self._execute(
-                            f'SELECT sum(price * orig_qty) / sum(orig_qty) FROM `batches_trading` WHERE status="FILLED" AND period_id = {period_id} AND is_finish=1;')
-                        avg_price = round(avg_price[0][0], 2) if avg_price[0][0] else avg_price[0][0]
+                        avg_price = avg_price(period_id)
                         dingding_warn(
                             f'分批建仓:{market}\n当前价:{self.ticker_price} 当前委托:{int(batches_db[0][4])}\n当前均价:{avg_price} 买入数量:{buy_orders[0][1]}\n当前仓位:【{batches_db[0][3]}】[{batches_db[0][4]},{batches_db[0][7]}]\n下次建仓:【{batches_db[1][3]}】[{batches_db[1][4]},{batches_db[1][7]}]')
                     else:
@@ -282,9 +287,7 @@ class Build(object):
                         f'UPDATE `batches` SET is_finish=0 WHERE period_id={period_id} AND serial>={batches_db[0][3]} AND serial<={batches_db[batch][3]};')
                     self.update_batches_trading(market)
                     self.update_commission(market)
-                    avg_price = self._execute(
-                        f'SELECT sum(price * orig_qty) / sum(orig_qty) FROM `batches_trading` WHERE period_id = {period_id} AND is_finish=1;')
-                    avg_price = round(avg_price[0][0], 2) if avg_price[0][0] else avg_price[0][0]
+                    avg_price = avg_price(period_id)
                     batches = self._execute(
                         f'SELECT * FROM `batches` WHERE is_finish=-1 AND period_id={period_id} ORDER BY serial LIMIT 1;')
                     if batches:
